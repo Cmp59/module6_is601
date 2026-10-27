@@ -5,6 +5,7 @@ from .calculator_memento import CalculatorMemento
 from .calculation import CalculationFactory
 from .exceptions import InvalidInputError
 from .history import CalculationHistory, CalculationSubject
+from .logger import Logger, LoggingObserver
 
 
 class Calculator:
@@ -14,10 +15,15 @@ class Calculator:
         self.config = config or CalculatorConfig.load()
         self.session_history_file = self.config.new_session_history_file()
         self.history = CalculationHistory(
-            self.session_history_file, auto_save=self.config.auto_save
+            self.session_history_file,
+            auto_save=self.config.auto_save,
+            max_history_size=self.config.max_history_size,
+            encoding=self.config.default_encoding,
         )
+        self.logger = Logger(self.config.log_file, self.config.default_encoding)
         self._events = CalculationSubject()
         self._events.attach(self.history)
+        self._events.attach(LoggingObserver(self.logger))
         self._undo_stack = []
         self._redo_stack = []
         self.history.load()
@@ -25,6 +31,7 @@ class Calculator:
         self.history.load_saved_sessions(
             self.config.history_file, self.session_history_file
         )
+        self.logger.info("Calculator session started")
 
     def supports(self, operator):
         """Return whether an operation symbol is supported."""
@@ -32,10 +39,13 @@ class Calculator:
 
     def calculate(self, operator, first_number, second_number):
         """Create, perform, publish, and return a calculation result."""
+        self._validate_input(first_number)
+        self._validate_input(second_number)
         calculation = CalculationFactory.create(
             operator, first_number, second_number
         )
-        result = calculation.perform()
+        result = round(calculation.perform(), self.config.precision)
+        calculation.result = result
         self._undo_stack.append(self._create_memento())
         self._redo_stack.clear()
         self._events.notify(calculation)
@@ -94,7 +104,7 @@ class Calculator:
             float(entry["first_operand"]),
             float(entry["second_operand"]),
         )
-        calculation.perform()
+        calculation.result = round(calculation.perform(), self.config.precision)
         self._undo_stack.append(self._create_memento())
         self._redo_stack.clear()
         self._events.notify(calculation)
@@ -103,6 +113,8 @@ class Calculator:
     def close(self):
         """Save this session's CSV and return its path."""
         self.history.save()
+        self.logger.info("Calculator session ended")
+        self.logger.close()
         return self.session_history_file
 
     def load(self):
@@ -117,3 +129,13 @@ class Calculator:
 
     def _restore(self, memento):
         self.history.restore_rows(memento.rows)
+
+    def _validate_input(self, value):
+        try:
+            valid_number = abs(value) <= self.config.max_input_value
+        except TypeError as error:
+            raise InvalidInputError("Inputs must be numeric values.") from error
+        if not valid_number:
+            raise InvalidInputError(
+                f"Input value exceeds the maximum of {self.config.max_input_value}."
+            )

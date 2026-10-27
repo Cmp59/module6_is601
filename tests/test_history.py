@@ -75,6 +75,17 @@ def test_history_get_all_and_format_entries(tmp_path):
     assert history.format_entries() == "1. 2 + 3 = 5"
 
 
+def test_history_keeps_only_most_recent_configured_entries(tmp_path):
+    history = CalculationHistory(
+        tmp_path / "history.csv", auto_save=False, max_history_size=2
+    )
+    history.add(performed_calculation("add", 1, 1))
+    history.add(performed_calculation("add", 2, 2))
+    history.add(performed_calculation("add", 3, 3))
+
+    assert [entry["first_operand"] for entry in history.get_all()] == [2, 3]
+
+
 def test_history_ignores_auto_save_when_disabled(tmp_path):
     history_file = tmp_path / "history.csv"
     history = CalculationHistory(history_file, auto_save=False)
@@ -106,6 +117,22 @@ def test_history_loads_saved_dataframe(tmp_path):
     assert loaded.dataframe.iloc[0]["result"] == 8
 
 
+def test_history_uses_configured_encoding_for_csv(tmp_path):
+    history_file = tmp_path / "history.csv"
+    history = CalculationHistory(
+        history_file, auto_save=False, encoding="utf-8-sig"
+    )
+    history.add(performed_calculation())
+    history.save()
+
+    assert history_file.read_bytes().startswith(b"\xef\xbb\xbf")
+    loaded = CalculationHistory(
+        history_file, auto_save=False, encoding="utf-8-sig"
+    )
+    loaded.load()
+    assert loaded.get_all()[0]["result"] == 5
+
+
 def test_history_load_missing_file_starts_empty(tmp_path):
     history = CalculationHistory(tmp_path / "missing.csv", auto_save=False)
 
@@ -135,7 +162,7 @@ def test_history_rejects_wrong_csv_columns(tmp_path):
 def test_history_wraps_load_os_errors(tmp_path, monkeypatch):
     history = CalculationHistory(tmp_path / "history.csv")
 
-    def fail_read(_path):
+    def fail_read(_path, **_kwargs):
         raise PermissionError("denied")
 
     monkeypatch.setattr(pd, "read_csv", fail_read)
@@ -192,7 +219,7 @@ def test_history_saved_entries_wrap_csv_read_errors(tmp_path, monkeypatch):
     archive_file.write_text("first_operand,operator,second_operand,result\n", encoding="utf-8")
     history = CalculationHistory(tmp_path / "history_current.csv", auto_save=False)
 
-    def fail_read(_path):
+    def fail_read(_path, **_kwargs):
         raise PermissionError("denied")
 
     monkeypatch.setattr(pd, "read_csv", fail_read)

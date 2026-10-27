@@ -5,7 +5,7 @@ import math
 from .exceptions import InvalidInputError
 
 
-def parse_number(value: str) -> float:
+def parse_number(value: str, max_value: float = float("inf")) -> float:
     """Parse a finite floating-point value or raise a user-facing error."""
     try:
         number = float(value)
@@ -13,6 +13,8 @@ def parse_number(value: str) -> float:
         raise InvalidInputError(f"Invalid number: {value}") from error
     if not math.isfinite(number):
         raise InvalidInputError("Number must be finite.")
+    if abs(number) > max_value:
+        raise InvalidInputError(f"Number must not exceed {max_value} in magnitude.")
     return number
 
 

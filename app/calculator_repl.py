@@ -161,7 +161,10 @@ def calculator():
     except CalculatorError as error:
         print(f"Calculator configuration/history error: {error}")
         return
-    session_logger = SessionLogger(calculator_app.session_history_file)
+    session_logger = SessionLogger(
+        calculator_app.session_history_file,
+        calculator_app.config.default_encoding,
+    )
     print(
         "Calculator: enter help for commands. Enter exit or q at any prompt to quit."
     )
@@ -203,8 +206,12 @@ def calculator():
             continue
 
         try:
-            first_number = parse_number(first_input)
-            second_number = parse_number(second_input)
+            first_number = parse_number(
+                first_input, calculator_app.config.max_input_value
+            )
+            second_number = parse_number(
+                second_input, calculator_app.config.max_input_value
+            )
             result = calculator_app.calculate(
                 operator, first_number, second_number
             )

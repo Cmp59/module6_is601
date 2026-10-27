@@ -3,7 +3,7 @@ import pytest
 
 from app.calculator import Calculator
 from app.calculator_config import CalculatorConfig
-from app.exceptions import InvalidOperationError
+from app.exceptions import InvalidInputError, InvalidOperationError
 
 
 def make_calculator(tmp_path, auto_save=True):
@@ -27,6 +27,35 @@ def test_calculator_facade_rejects_unknown_operation(tmp_path):
 
     with pytest.raises(InvalidOperationError, match="Unsupported operation"):
         calculator.calculate("unknown", 2, 3)
+
+
+def test_calculator_applies_precision_and_logs_calculation(tmp_path):
+    calculator = Calculator(
+        CalculatorConfig(
+            tmp_path / "history.csv",
+            auto_save=False,
+            precision=2,
+        )
+    )
+
+    assert calculator.calculate("divide", 1, 3) == 0.33
+    calculator.close()
+
+    log_text = calculator.config.log_file.read_text(encoding="utf-8")
+    assert "Calculation: 1 divide 3 = 0.33" in log_text
+
+
+def test_calculator_rejects_input_over_configured_maximum(tmp_path):
+    calculator = Calculator(
+        CalculatorConfig(
+            tmp_path / "history.csv",
+            auto_save=False,
+            max_input_value=10,
+        )
+    )
+
+    with pytest.raises(InvalidInputError, match="exceeds the maximum"):
+        calculator.calculate("add", 11, 1)
 
 
 def test_calculator_undo_redo_and_empty_stack_results(tmp_path):

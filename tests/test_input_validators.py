@@ -15,5 +15,11 @@ def test_parse_number_rejects_invalid_or_non_finite_values(value):
         parse_number(value)
 
 
+def test_parse_number_enforces_configured_maximum():
+    assert parse_number("-10", max_value=10) == -10
+    with pytest.raises(InvalidInputError, match="must not exceed"):
+        parse_number("10.01", max_value=10)
+
+
 def test_normalize_command_strips_and_lowercases():
     assert normalize_command("  ROOT  ") == "root"

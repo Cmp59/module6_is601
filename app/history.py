@@ -45,9 +45,17 @@ class CalculationSubject:
 class CalculationHistory(CalculationObserver):
     """Observe calculation events and persist them in a pandas DataFrame."""
 
-    def __init__(self, history_file: Path, auto_save: bool = True):
+    def __init__(
+        self,
+        history_file: Path,
+        auto_save: bool = True,
+        max_history_size: int = 10000,
+        encoding: str = "utf-8",
+    ):
         self.history_file = Path(history_file)
         self.auto_save = auto_save
+        self.max_history_size = max_history_size
+        self.encoding = encoding
         self._data = pd.DataFrame(columns=HISTORY_COLUMNS)
         self._saved_data = pd.DataFrame(columns=HISTORY_COLUMNS + ["_session_file"])
 
@@ -67,6 +75,7 @@ class CalculationHistory(CalculationObserver):
             "result": calculation.result,
         }
         self._data.loc[len(self._data)] = row
+        self._trim_history()
         if self.auto_save:
             self.save()
 
@@ -89,14 +98,19 @@ class CalculationHistory(CalculationObserver):
             for session_file in session_files:
                 if session_file == Path(exclude_history_file):
                     continue
-                saved_data = pd.read_csv(session_file)
+                saved_data = pd.read_csv(session_file, encoding=self.encoding)
                 if list(saved_data.columns) != HISTORY_COLUMNS:
                     raise HistoryError(
                         f"Saved history has an invalid column layout: {session_file}"
                     )
                 saved_data["_session_file"] = session_file
                 session_frames.append(saved_data)
-        except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        except (
+            OSError,
+            UnicodeError,
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+        ) as error:
             raise HistoryError(f"Could not read saved history: {error}") from error
         if session_frames:
             self._saved_data = pd.concat(session_frames, ignore_index=True)
@@ -132,23 +146,30 @@ class CalculationHistory(CalculationObserver):
         """Persist the current history DataFrame to CSV."""
         try:
             self.history_file.parent.mkdir(parents=True, exist_ok=True)
-            self._data.to_csv(self.history_file, index=False)
-        except OSError as error:
+            self._data.to_csv(
+                self.history_file, index=False, encoding=self.encoding
+            )
+        except (OSError, UnicodeError) as error:
             raise HistoryError(f"Could not save history: {error}") from error
 
     def load(self) -> None:
         """Load existing CSV history, rejecting malformed columns."""
         try:
-            loaded = pd.read_csv(self.history_file)
+            loaded = pd.read_csv(self.history_file, encoding=self.encoding)
         except FileNotFoundError:
             self._data = pd.DataFrame(columns=HISTORY_COLUMNS)
             return
-        except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError) as error:
+        except (
+            OSError,
+            UnicodeError,
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+        ) as error:
             raise HistoryError(f"Could not load history: {error}") from error
 
         if list(loaded.columns) != HISTORY_COLUMNS:
             raise HistoryError("History CSV has an invalid column layout.")
-        self._data = loaded
+        self._data = loaded.tail(self.max_history_size).reset_index(drop=True)
 
     def snapshot_rows(self):
         """Return raw row values for memento snapshots."""
@@ -156,6 +177,11 @@ class CalculationHistory(CalculationObserver):
 
     def restore_rows(self, rows) -> None:
         """Restore history from an immutable snapshot of rows."""
-        self._data = pd.DataFrame(rows, columns=HISTORY_COLUMNS)
+        self._data = pd.DataFrame(
+            rows, columns=HISTORY_COLUMNS
+        ).tail(self.max_history_size).reset_index(drop=True)
         if self.auto_save:
             self.save()
+
+    def _trim_history(self) -> None:
+        self._data = self._data.tail(self.max_history_size).reset_index(drop=True)
