@@ -3,6 +3,7 @@
 from .calculator import Calculator
 from .exceptions import CalculatorError
 from .input_validators import normalize_command, parse_number
+from .logger import SessionLogger
 
 HELP_TEXT = (
     "Commands: help, history, clear, undo, redo, save, load, exit (q also exits).\n"
@@ -30,16 +31,19 @@ OPERATION_COMMANDS = frozenset(
 )
 
 
-def _read_input(prompt):
+def _read_input(prompt, session_logger=None):
     """Read one prompt, returning None for EOF or an interrupt."""
     try:
-        return input(prompt).strip()
+        value = input(prompt).strip()
+        if session_logger is not None:
+            session_logger.record_input(prompt.rstrip(": "), value)
+        return value
     except (EOFError, KeyboardInterrupt):
         print("Input interrupted. Exiting calculator.")
         return None
 
 
-def _handle_command(user_input, calculator):
+def _handle_command(user_input, calculator, session_logger=None):
     """Handle a REPL command, returning its control-flow action."""
     command = normalize_command(user_input)
     if command in ("q", "exit"):
@@ -120,7 +124,9 @@ def _handle_command(user_input, calculator):
                 f"{entry['second_operand']} = {entry['result']} "
                 f"({entry['_session_file'].name})"
             )
-        selection = _read_input("Enter an entry number to load, or 'cancel': ")
+        selection = _read_input(
+            "Enter an entry number to load, or 'cancel': ", session_logger
+        )
         if selection is None:
             return "exit"
         if normalize_command(selection) == "cancel":
@@ -136,6 +142,13 @@ def _handle_command(user_input, calculator):
         except (ValueError, CalculatorError) as error:
             print(f"Load failed: {error}")
         else:
+            if session_logger is not None:
+                session_logger.record_calculation(
+                    calculation.operator_symbol,
+                    calculation.first_number,
+                    calculation.second_number,
+                    calculation.result,
+                )
             print(f"Loaded calculation into this session: {calculation}.")
         return "handled"
     return None
@@ -148,26 +161,27 @@ def calculator():
     except CalculatorError as error:
         print(f"Calculator configuration/history error: {error}")
         return
+    session_logger = SessionLogger(calculator_app.session_history_file)
     print(
         "Calculator: enter help for commands. Enter exit or q at any prompt to quit."
     )
     print("Commands: help, history, clear, undo, redo, save, load, exit (q also exits).")
 
     while True:
-        first_input = _read_input("First number: ")
+        first_input = _read_input("First number: ", session_logger)
         if first_input is None:
             break
-        command_action = _handle_command(first_input, calculator_app)
+        command_action = _handle_command(first_input, calculator_app, session_logger)
         if command_action == "exit":
             break
         if command_action == "handled":
             continue
 
-        operator = _read_input("Operation: ")
+        operator = _read_input("Operation: ", session_logger)
         if operator is None:
             break
         operator = normalize_command(operator)
-        command_action = _handle_command(operator, calculator_app)
+        command_action = _handle_command(operator, calculator_app, session_logger)
         if command_action == "exit":
             break
         if command_action == "handled":
@@ -179,10 +193,10 @@ def calculator():
             )
             continue
 
-        second_input = _read_input("Second number: ")
+        second_input = _read_input("Second number: ", session_logger)
         if second_input is None:
             break
-        command_action = _handle_command(second_input, calculator_app)
+        command_action = _handle_command(second_input, calculator_app, session_logger)
         if command_action == "exit":
             break
         if command_action == "handled":
@@ -198,6 +212,9 @@ def calculator():
             print(f"Error: {error}")
             continue
 
+        session_logger.record_calculation(
+            operator, first_number, second_number, result
+        )
         print(f"Result: {result}")
 
     try:
@@ -205,7 +222,13 @@ def calculator():
     except CalculatorError as error:
         print(f"Error saving session history: {error}")
     else:
-        print(f"Session history saved to: {session_file}")
+        print(f"Session history saved to: {session_file.resolve()}")
+    try:
+        log_file = session_logger.close()
+    except OSError as error:
+        print(f"Error saving session log: {error}")
+    else:
+        print(f"Session log saved to: {log_file.resolve()}")
 
 
 if __name__ == "__main__":

@@ -160,6 +160,17 @@ def test_repl_saves_session_csv_when_exiting(capsys, monkeypatch, tmp_path):
     assert "Session history saved to:" in output
     csv_files = list(tmp_path.glob("history_*.csv"))
     assert csv_files
+    text_file = csv_files[-1].with_suffix(".txt")
+    assert f"Session history saved to: {csv_files[-1].resolve()}" in output
+    assert f"Session log saved to: {text_file.resolve()}" in output
+    assert text_file.exists()
+    session_log = text_file.read_text(encoding="utf-8")
+    assert "Session started:" in session_log
+    assert "Input (First number): 2" in session_log
+    assert "Input (Operation): add" in session_log
+    assert "Input (Second number): 3" in session_log
+    assert "Calculation: 2.0 add 3.0 = 5.0" in session_log
+    assert "Session ended:" in session_log
     saved = pd.read_csv(csv_files[-1])
     assert list(saved.columns) == [
         "first_operand",
