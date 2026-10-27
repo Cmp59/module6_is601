@@ -14,11 +14,15 @@ from app.calculator_repl import calculator
 @pytest.mark.parametrize(
     "first_number, operator, second_number, expected_result",
     [
-        ("2", "+", "3", "Result: 5.0"),
-        ("5", "-", "3", "Result: 2.0"),
-        ("2", "*", "3", "Result: 6.0"),
-        ("6", "/", "3", "Result: 2.0"),
-        ("2", "^", "3", "Result: 8.0"),
+        ("2", "add", "3", "Result: 5.0"),
+        ("5", "subtract", "3", "Result: 2.0"),
+        ("2", "multiply", "3", "Result: 6.0"),
+        ("6", "divide", "3", "Result: 2.0"),
+        ("7", "modulus", "3", "Result: 1.0"),
+        ("-7", "int_divide", "3", "Result: -2"),
+        ("25", "percent", "200", "Result: 12.5"),
+        ("3", "abs_diff", "8", "Result: 5.0"),
+        ("2", "power", "3", "Result: 8.0"),
         ("27", "root", "3", "Result: 3.0"),
     ],
 )
@@ -52,33 +56,33 @@ def test_calculator_quits_at_operator(quit_command):
 
 @pytest.mark.parametrize("quit_command", ["q", "exit"])
 def test_calculator_quits_at_second_number(quit_command):
-    with patch("builtins.input", side_effect=["2", "+", quit_command]):
+    with patch("builtins.input", side_effect=["2", "add", quit_command]):
         calculator()
 
 
 def test_calculator_rejects_unsupported_operation(capsys):
-    with patch("builtins.input", side_effect=["2", "%", "q"]):
+    with patch("builtins.input", side_effect=["2", "+", "q"]):
         calculator()
 
-    assert "Please choose +, -, *, /, ^, or root." in capsys.readouterr().out
+    assert "Please choose add, subtract, multiply, divide" in capsys.readouterr().out
 
 
 def test_calculator_rejects_non_numeric_first_number(capsys):
-    with patch("builtins.input", side_effect=["abc", "+", "2", "q"]):
+    with patch("builtins.input", side_effect=["abc", "add", "2", "q"]):
         calculator()
 
     assert "Invalid number: abc" in capsys.readouterr().out
 
 
 def test_calculator_rejects_non_numeric_second_number(capsys):
-    with patch("builtins.input", side_effect=["2", "+", "abc", "q"]):
+    with patch("builtins.input", side_effect=["2", "add", "abc", "q"]):
         calculator()
 
     assert "Invalid number: abc" in capsys.readouterr().out
 
 
 def test_calculator_handles_division_by_zero(capsys):
-    with patch("builtins.input", side_effect=["2", "/", "0", "q"]):
+    with patch("builtins.input", side_effect=["2", "divide", "0", "q"]):
         calculator()
 
     assert "You cannot divide by zero." in capsys.readouterr().out
@@ -97,7 +101,7 @@ def test_calculator_help_command(capsys):
 
     output = capsys.readouterr().out
     assert "Commands: help, history, clear, undo, redo, save, load, exit" in output
-    assert "Operations: +, -, *, /, ^, root." in output
+    assert "Operations: add, subtract, multiply, divide, power, root" in output
 
 
 def test_calculator_handles_help_at_operator_prompt(capsys):
@@ -108,23 +112,23 @@ def test_calculator_handles_help_at_operator_prompt(capsys):
 
 
 def test_calculator_handles_history_at_second_number_prompt(capsys):
-    with patch("builtins.input", side_effect=["2", "+", "history", "exit"]):
+    with patch("builtins.input", side_effect=["2", "add", "history", "exit"]):
         calculator()
 
     assert "No calculations yet." in capsys.readouterr().out
 
 
 def test_calculator_displays_completed_history(capsys):
-    with patch("builtins.input", side_effect=["2", "+", "3", "history", "q"]):
+    with patch("builtins.input", side_effect=["2", "add", "3", "history", "q"]):
         calculator()
 
-    assert "1. 2.0 + 3.0 = 5.0" in capsys.readouterr().out
+    assert "1. 2.0 add 3.0 = 5.0" in capsys.readouterr().out
 
 
 def test_failed_calculation_is_not_added_to_history(capsys):
     with patch(
         "builtins.input",
-        side_effect=["2", "/", "0", "history", "q"],
+        side_effect=["2", "divide", "0", "history", "q"],
     ):
         calculator()
 
@@ -148,7 +152,7 @@ def test_calculator_module_starts_repl(monkeypatch):
 
 def test_repl_saves_session_csv_when_exiting(capsys, monkeypatch, tmp_path):
     monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
-    with patch("builtins.input", side_effect=["2", "+", "3", "exit"]):
+    with patch("builtins.input", side_effect=["2", "add", "3", "exit"]):
         calculator()
 
     output = capsys.readouterr().out
@@ -165,7 +169,7 @@ def test_repl_saves_session_csv_when_exiting(capsys, monkeypatch, tmp_path):
     ]
     assert saved.iloc[-1].to_dict() == {
         "first_operand": 2.0,
-        "operator": "+",
+        "operator": "add",
         "second_operand": 3.0,
         "result": 5.0,
     }
@@ -198,7 +202,7 @@ def test_calculator_state_commands(command, expected, capsys):
 @pytest.mark.parametrize("exception_type", [EOFError, KeyboardInterrupt])
 @pytest.mark.parametrize(
     "input_before_interrupt",
-    [[], ["2"], ["2", "+"]],
+    [[], ["2"], ["2", "add"]],
 )
 def test_calculator_exits_gracefully_on_input_interruption(
     exception_type, input_before_interrupt, capsys
@@ -259,13 +263,13 @@ def test_calculator_reports_session_save_error(monkeypatch, capsys):
 def test_undo_and_redo_report_the_entry(capsys):
     with patch(
         "builtins.input",
-        side_effect=["2", "+", "3", "undo", "redo", "exit"],
+        side_effect=["2", "add", "3", "undo", "redo", "exit"],
     ):
         calculator()
 
     output = capsys.readouterr().out
-    assert "Undo: removed 2.0 + 3.0 = 5.0 from history." in output
-    assert "Redo: restored 2.0 + 3.0 = 5.0 to history." in output
+    assert "Undo: removed 2.0 add 3.0 = 5.0 from history." in output
+    assert "Redo: restored 2.0 add 3.0 = 5.0 to history." in output
 
 
 def test_load_lists_and_imports_selected_previous_session_entry(

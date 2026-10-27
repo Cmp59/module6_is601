@@ -27,6 +27,32 @@ class Operations:
         return first_number / second_number
 
     @staticmethod
+    def modulus(first_number, second_number):
+        """Return the remainder after dividing the first number by the second."""
+        if second_number == 0:
+            raise OperationError("You cannot calculate a remainder with zero.")
+        return first_number % second_number
+
+    @staticmethod
+    def integer_division(first_number, second_number):
+        """Return the quotient with its fractional part truncated."""
+        if second_number == 0:
+            raise OperationError("You cannot divide by zero.")
+        return int(first_number / second_number)
+
+    @staticmethod
+    def percentage(first_number, second_number):
+        """Return the first number as a percentage of the second."""
+        if second_number == 0:
+            raise OperationError("You cannot calculate a percentage of zero.")
+        return (first_number / second_number) * 100
+
+    @staticmethod
+    def absolute_difference(first_number, second_number):
+        """Return the nonnegative difference between two numbers."""
+        return abs(first_number - second_number)
+
+    @staticmethod
     def power(base, exponent):
         """Raise a base to an exponent."""
         return base**exponent
@@ -81,6 +107,34 @@ class DivisionStrategy(OperationStrategy):
         return Operations.division(first_number, second_number)
 
 
+class ModulusStrategy(OperationStrategy):
+    """Strategy for remainder calculation."""
+
+    def execute(self, first_number, second_number):
+        return Operations.modulus(first_number, second_number)
+
+
+class IntegerDivisionStrategy(OperationStrategy):
+    """Strategy for integer division."""
+
+    def execute(self, first_number, second_number):
+        return Operations.integer_division(first_number, second_number)
+
+
+class PercentageStrategy(OperationStrategy):
+    """Strategy for percentage calculation."""
+
+    def execute(self, first_number, second_number):
+        return Operations.percentage(first_number, second_number)
+
+
+class AbsoluteDifferenceStrategy(OperationStrategy):
+    """Strategy for absolute difference."""
+
+    def execute(self, first_number, second_number):
+        return Operations.absolute_difference(first_number, second_number)
+
+
 class PowerStrategy(OperationStrategy):
     """Strategy for exponentiation."""
 
@@ -100,11 +154,22 @@ class OperationFactory:
 
     _STRATEGIES = {
         "+": AdditionStrategy,
+        "add": AdditionStrategy,
         "-": SubtractionStrategy,
+        "subtract": SubtractionStrategy,
         "*": MultiplicationStrategy,
+        "multiply": MultiplicationStrategy,
         "/": DivisionStrategy,
+        "divide": DivisionStrategy,
         "^": PowerStrategy,
+        "power": PowerStrategy,
         "root": RootStrategy,
+        "%": ModulusStrategy,
+        "modulus": ModulusStrategy,
+        "//": IntegerDivisionStrategy,
+        "int_divide": IntegerDivisionStrategy,
+        "percent": PercentageStrategy,
+        "abs_diff": AbsoluteDifferenceStrategy,
     }
 
     @classmethod

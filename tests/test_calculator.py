@@ -26,7 +26,7 @@ def test_calculator_facade_rejects_unknown_operation(tmp_path):
     calculator = make_calculator(tmp_path)
 
     with pytest.raises(InvalidOperationError, match="Unsupported operation"):
-        calculator.calculate("%", 2, 3)
+        calculator.calculate("unknown", 2, 3)
 
 
 def test_calculator_undo_redo_and_empty_stack_results(tmp_path):

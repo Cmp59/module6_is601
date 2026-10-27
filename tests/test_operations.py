@@ -23,6 +23,13 @@ from app.operations import OperationFactory, Operations
         (Operations.division, -6, 3, -2),
         (Operations.division, 0, 4, 0),
         (Operations.division, 7.5, 2.5, 3.0),
+        (Operations.modulus, 7, 3, 1),
+        (Operations.modulus, -7, 3, 2),
+        (Operations.integer_division, 7, 3, 2),
+        (Operations.integer_division, -7, 3, -2),
+        (Operations.percentage, 25, 200, 12.5),
+        (Operations.absolute_difference, 3, 8, 5),
+        (Operations.absolute_difference, 8, 3, 5),
         (Operations.power, 2, 3, 8),
         (Operations.power, 2, -2, 0.25),
         (Operations.power, -2, 3, -8),
@@ -49,6 +56,15 @@ def test_root_rejects_zero_degree():
         Operations.root(9, 0)
 
 
+@pytest.mark.parametrize(
+    "operation",
+    [Operations.modulus, Operations.integer_division, Operations.percentage],
+)
+def test_division_based_operations_reject_zero_denominator(operation):
+    with pytest.raises(ValueError, match="zero"):
+        operation(6, 0)
+
+
 @pytest.mark.parametrize("degree", [2, 2.5])
 def test_root_rejects_non_real_negative_roots(degree):
     with pytest.raises(ValueError, match="negative number requires an odd"):
@@ -62,6 +78,10 @@ def test_root_rejects_non_real_negative_roots(degree):
         ("-", 5, 3, 2),
         ("*", 2, 3, 6),
         ("/", 6, 3, 2),
+        ("%", 7, 3, 1),
+        ("//", -7, 3, -2),
+        ("percent", 25, 200, 12.5),
+        ("abs_diff", 3, 8, 5),
         ("^", 2, 3, 8),
         ("root", 27, 3, 3),
     ],
@@ -76,6 +96,6 @@ def test_operation_factory_creates_executable_strategies(
 
 
 def test_operation_factory_rejects_unknown_strategy():
-    assert not OperationFactory.supports("%")
+    assert not OperationFactory.supports("unknown")
     with pytest.raises(InvalidOperationError, match="Unsupported operation"):
-        OperationFactory.create("%")
+        OperationFactory.create("unknown")

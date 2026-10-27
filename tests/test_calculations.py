@@ -32,12 +32,12 @@ def test_factory_supports_basic_operators(operator):
 
 
 def test_factory_rejects_unsupported_operator():
-    with pytest.raises(ValueError, match="Unsupported operation: %"):
-        CalculationFactory.create("%", 2, 3)
+    with pytest.raises(ValueError, match="Unsupported operation: unknown"):
+        CalculationFactory.create("unknown", 2, 3)
 
 
 def test_factory_reports_unsupported_operator():
-    assert not CalculationFactory.supports("%")
+    assert not CalculationFactory.supports("unknown")
 
 
 def test_history_starts_empty(tmp_path):
