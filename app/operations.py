@@ -178,6 +178,15 @@ class OperationFactory:
         return operator in cls._STRATEGIES
 
     @classmethod
+    def commands(cls):
+        """Return registered word commands, excluding symbolic aliases."""
+        return tuple(
+            operator
+            for operator in cls._STRATEGIES
+            if operator.replace("_", "").isalpha()
+        )
+
+    @classmethod
     def create(cls, operator):
         """Create a strategy for an operator or raise a clear error."""
         try:

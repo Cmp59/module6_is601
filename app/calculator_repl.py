@@ -2,34 +2,10 @@
 
 from .calculator import Calculator
 from .exceptions import CalculatorError
+from .help_menu import render_help_text
 from .input_validators import normalize_command, parse_number
 from .logger import SessionLogger
-
-HELP_TEXT = (
-    "Commands: help, history, clear, undo, redo, save, load, exit (q also exits).\n"
-    "Operations: add, subtract, multiply, divide, power, root, modulus, "
-    "int_divide, percent, abs_diff.\n"
-    "For root, enter the radicand first and the root degree second.\n"
-    "clear deletes this session's history and resets undo/redo.\n"
-    "undo removes the last entry; redo restores the last undone entry.\n"
-    "save writes this session; load lists earlier sessions and imports a selected entry."
-)
-
-OPERATION_COMMANDS = frozenset(
-    {
-        "add",
-        "subtract",
-        "multiply",
-        "divide",
-        "power",
-        "root",
-        "modulus",
-        "int_divide",
-        "percent",
-        "abs_diff",
-    }
-)
-
+from .operations import OperationFactory
 
 def _read_input(prompt, session_logger=None):
     """Read one prompt, returning None for EOF or an interrupt."""
@@ -51,7 +27,7 @@ def _handle_command(user_input, calculator, session_logger=None):
         return "exit"
     if command == "help":
         print("Available commands and operations:")
-        print(HELP_TEXT)
+        print(render_help_text())
         return "handled"
     if command == "history":
         print("Current session history:")
@@ -189,7 +165,7 @@ def calculator():
             break
         if command_action == "handled":
             continue
-        if operator not in OPERATION_COMMANDS or not calculator_app.supports(operator):
+        if operator not in OperationFactory.commands() or not calculator_app.supports(operator):
             print(
                 "Please choose add, subtract, multiply, divide, power, root, "
                 "modulus, int_divide, percent, or abs_diff."

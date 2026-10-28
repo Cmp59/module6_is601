@@ -26,6 +26,8 @@ python main.py
 
 The calculator accepts the word commands `add`, `subtract`, `multiply`, `divide`, `power`, `root`, `modulus`, `int_divide`, `percent`, and `abs_diff`. For `root`, enter the radicand first and the root degree second. `percent` computes `(first number / second number) * 100`. Available commands are `help`, `history`, `clear`, `undo`, `redo`, `save`, `load`, and `exit` (`q` also exits). `clear` deletes current-session history and resets undo/redo. `undo` removes the most recent entry, and `redo` restores the last undone entry. On startup, earlier session CSVs are loaded into a separate pandas archive, leaving the new session history empty. `load` lists those archived calculations and copies the selected entry into the current session. Each REPL session writes a uniquely named CSV file with `first_operand`, `operator`, `second_operand`, and `result` columns, plus a matching `.txt` session journal with start/end times, entered inputs, and completed calculations. Both files are stored beside the configured history file; the CSV auto-saves after changes and on exit.
 
+The help menu uses the Decorator pattern to add the operation commands dynamically from the operation factory, so registered word commands appear in `help` automatically.
+
 Copy `.env.example` to `.env` to configure the application. Relative directories are resolved from the project root, so the project remains portable when downloaded to another computer. The application creates the folders when it first writes files.
 
 - `CALCULATOR_HISTORY_DIR`: directory for per-session CSV files and their matching `.txt` journals. Default: `data/history`.
