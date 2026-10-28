@@ -104,6 +104,7 @@ class Calculator:
             float(entry["first_operand"]),
             float(entry["second_operand"]),
         )
+        calculation.timestamp = entry.get("timestamp") or calculation.timestamp
         calculation.result = round(calculation.perform(), self.config.precision)
         self._undo_stack.append(self._create_memento())
         self._redo_stack.clear()

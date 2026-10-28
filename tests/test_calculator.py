@@ -158,6 +158,7 @@ def test_calculator_loads_selected_entry_from_previous_session(tmp_path):
         "operator": "+",
         "second_operand": 1.0,
         "result": 9.0,
+        "timestamp": calculator.history_entries()[-1]["timestamp"],
     }
 
 

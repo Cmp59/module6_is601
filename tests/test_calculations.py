@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime
 
 from app.calculation import Calculation, CalculationFactory
 from app.history import CalculationHistory
@@ -58,9 +59,22 @@ def test_history_stores_and_formats_calculations(tmp_path):
     history.add(second_calculation)
 
     assert history.get_all() == (
-        {"first_operand": 2, "operator": "+", "second_operand": 3, "result": 5},
-        {"first_operand": 4, "operator": "*", "second_operand": 5, "result": 20},
+        {
+            "first_operand": 2,
+            "operator": "+",
+            "second_operand": 3,
+            "result": 5,
+            "timestamp": first_calculation.timestamp,
+        },
+        {
+            "first_operand": 4,
+            "operator": "*",
+            "second_operand": 5,
+            "result": 20,
+            "timestamp": second_calculation.timestamp,
+        },
     )
+    assert datetime.fromisoformat(first_calculation.timestamp).utcoffset().total_seconds() == 0
     assert history.format_entries() == "1. 2 + 3 = 5\n2. 4 * 5 = 20"
 
 

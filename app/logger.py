@@ -61,17 +61,29 @@ class SessionLogger:
         self.started_at = datetime.now(timezone.utc)
         self._events = []
 
+    def _record(self, message: str) -> None:
+        timestamp = datetime.now(timezone.utc).isoformat()
+        self._events.append(f"{timestamp} {message}")
+
     def record_input(self, prompt: str, value: str) -> None:
         """Record a value entered at a REPL prompt."""
-        self._events.append(f"Input ({prompt}): {value}")
+        self._record(f"Input ({prompt}): {value}")
 
     def record_calculation(
         self, operator: str, first_number: float, second_number: float, result: float
     ) -> None:
         """Record a completed calculation."""
-        self._events.append(
+        self._record(
             f"Calculation: {first_number} {operator} {second_number} = {result}"
         )
+
+    def record_warning(self, message: str) -> None:
+        """Record a timestamped warning in the session transcript."""
+        self._record(f"WARNING: {message}")
+
+    def record_error(self, message: str) -> None:
+        """Record a timestamped error in the session transcript."""
+        self._record(f"ERROR: {message}")
 
     def close(self) -> Path:
         """Write the session record and return its path."""

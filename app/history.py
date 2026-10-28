@@ -9,7 +9,14 @@ import pandas as pd
 from .calculation import Calculation
 from .exceptions import HistoryError
 
-HISTORY_COLUMNS = ["first_operand", "operator", "second_operand", "result"]
+HISTORY_COLUMNS = [
+    "first_operand",
+    "operator",
+    "second_operand",
+    "result",
+    "timestamp",
+]
+LEGACY_HISTORY_COLUMNS = HISTORY_COLUMNS[:-1]
 
 
 class CalculationObserver(ABC):
@@ -73,6 +80,7 @@ class CalculationHistory(CalculationObserver):
             "operator": calculation.operator_symbol,
             "second_operand": calculation.second_number,
             "result": calculation.result,
+            "timestamp": calculation.timestamp,
         }
         self._data.loc[len(self._data)] = row
         self._trim_history()
@@ -99,10 +107,13 @@ class CalculationHistory(CalculationObserver):
                 if session_file == Path(exclude_history_file):
                     continue
                 saved_data = pd.read_csv(session_file, encoding=self.encoding)
-                if list(saved_data.columns) != HISTORY_COLUMNS:
+                if list(saved_data.columns) == LEGACY_HISTORY_COLUMNS:
+                    saved_data["timestamp"] = ""
+                elif list(saved_data.columns) != HISTORY_COLUMNS:
                     raise HistoryError(
                         f"Saved history has an invalid column layout: {session_file}"
                     )
+                saved_data = saved_data[HISTORY_COLUMNS]
                 saved_data["_session_file"] = session_file
                 session_frames.append(saved_data)
         except (
@@ -167,9 +178,11 @@ class CalculationHistory(CalculationObserver):
         ) as error:
             raise HistoryError(f"Could not load history: {error}") from error
 
-        if list(loaded.columns) != HISTORY_COLUMNS:
+        if list(loaded.columns) == LEGACY_HISTORY_COLUMNS:
+            loaded["timestamp"] = ""
+        elif list(loaded.columns) != HISTORY_COLUMNS:
             raise HistoryError("History CSV has an invalid column layout.")
-        self._data = loaded.tail(self.max_history_size).reset_index(drop=True)
+        self._data = loaded[HISTORY_COLUMNS].tail(self.max_history_size).reset_index(drop=True)
 
     def snapshot_rows(self):
         """Return raw row values for memento snapshots."""
@@ -177,8 +190,12 @@ class CalculationHistory(CalculationObserver):
 
     def restore_rows(self, rows) -> None:
         """Restore history from an immutable snapshot of rows."""
+        normalized_rows = [
+            tuple(row) if len(row) == len(HISTORY_COLUMNS) else (*row, "")
+            for row in rows
+        ]
         self._data = pd.DataFrame(
-            rows, columns=HISTORY_COLUMNS
+            normalized_rows, columns=HISTORY_COLUMNS
         ).tail(self.max_history_size).reset_index(drop=True)
         if self.auto_save:
             self.save()

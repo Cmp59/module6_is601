@@ -53,7 +53,13 @@ def test_history_observes_and_auto_saves_calculations(tmp_path):
     subject.notify(calculation)
 
     assert history.dataframe.to_dict(orient="records") == [
-        {"first_operand": 2, "operator": "+", "second_operand": 3, "result": 5}
+        {
+            "first_operand": 2,
+            "operator": "+",
+            "second_operand": 3,
+            "result": 5,
+            "timestamp": calculation.timestamp,
+        }
     ]
     assert history_file.exists()
 
@@ -251,6 +257,7 @@ def test_history_loads_archives_on_start_and_excludes_current_file(tmp_path):
             "operator": "^",
             "second_operand": 2,
             "result": 49,
+            "timestamp": "",
             "_session_file": tmp_path / "history_previous.csv",
         },
     )
@@ -278,4 +285,6 @@ def test_history_csv_has_explicit_operand_columns(tmp_path):
         "operator",
         "second_operand",
         "result",
+        "timestamp",
     ]
+    assert pd.to_datetime(loaded.loc[0, "timestamp"], utc=True) is not None

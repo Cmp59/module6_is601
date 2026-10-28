@@ -1,4 +1,5 @@
-from unittest.mock import patch
+from datetime import datetime
+from unittest.mock import Mock, patch
 import runpy
 import sys
 from pathlib import Path
@@ -8,8 +9,44 @@ import pytest
 
 from app.calculator import Calculator
 from app.exceptions import ConfigurationError, HistoryError
-from app.calculator_repl import _handle_command, calculator
+from app.calculator_repl import _handle_command, _read_input, _record_issue, calculator
 from app.logger import SessionLogger
+
+
+def test_record_issue_supports_application_logger_without_session_logger():
+    calculator_app = Mock()
+
+    _record_issue(calculator_app, None, "invalid command")
+
+    calculator_app.logger.warning.assert_called_once_with("invalid command")
+
+
+def test_record_issue_supports_session_logger_without_application_logger():
+    session_logger = Mock()
+
+    _record_issue(None, session_logger, "invalid command", error=True)
+
+    session_logger.record_error.assert_called_once_with("invalid command")
+
+
+def test_record_issue_logs_errors_to_application_logger():
+    calculator_app = Mock()
+
+    _record_issue(calculator_app, None, "calculation failed", error=True)
+
+    calculator_app.logger.error.assert_called_once_with("calculation failed")
+
+
+def test_record_issue_without_loggers_is_ignored():
+    _record_issue(None, None, "no logger attached")
+
+
+def test_read_input_interruption_without_session_logger(capsys):
+    with patch("builtins.input", side_effect=KeyboardInterrupt()):
+        value = _read_input("Number: ")
+
+    assert value is None
+    assert "Input interrupted. Exiting calculator." in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(
@@ -65,7 +102,7 @@ def test_calculator_rejects_unsupported_operation(capsys):
     with patch("builtins.input", side_effect=["2", "+", "q"]):
         calculator()
 
-    assert "Please choose add, subtract, multiply, divide" in capsys.readouterr().out
+    assert "Please choose a supported word command" in capsys.readouterr().out
 
 
 def test_calculator_rejects_non_numeric_first_number(capsys):
@@ -171,6 +208,8 @@ def test_repl_saves_session_csv_when_exiting(capsys, monkeypatch, tmp_path):
     assert "Input (Operation): add" in session_log
     assert "Input (Second number): 3" in session_log
     assert "Calculation: 2.0 add 3.0 = 5.0" in session_log
+    assert "WARNING:" not in session_log
+    assert "T" in session_log.split("Calculation:")[0]
     assert "Session ended:" in session_log
     saved = pd.read_csv(csv_files[-1])
     assert list(saved.columns) == [
@@ -178,13 +217,40 @@ def test_repl_saves_session_csv_when_exiting(capsys, monkeypatch, tmp_path):
         "operator",
         "second_operand",
         "result",
+        "timestamp",
     ]
     assert saved.iloc[-1].to_dict() == {
         "first_operand": 2.0,
         "operator": "add",
         "second_operand": 3.0,
         "result": 5.0,
+        "timestamp": saved.iloc[-1]["timestamp"],
     }
+
+
+def test_repl_timestamps_user_warnings_in_session_and_application_logs(
+    capsys, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    monkeypatch.setenv("CALCULATOR_LOG_DIR", str(tmp_path / "logs"))
+    with patch(
+        "builtins.input",
+        side_effect=["2", "unsupported", "not-a-number", "add", "3", "exit"],
+    ):
+        calculator()
+
+    csv_file = next(tmp_path.glob("history_*.csv"))
+    transcript = csv_file.with_suffix(".txt").read_text(encoding="utf-8")
+    application_log = (tmp_path / "logs" / "calculator.log").read_text(
+        encoding="utf-8"
+    )
+
+    assert "WARNING: Unsupported operation command: unsupported" in transcript
+    assert "WARNING: Invalid number: not-a-number" in transcript
+    assert "WARNING Unsupported operation command: unsupported" in application_log
+    assert "WARNING Invalid number: not-a-number" in application_log
+    for event_line in transcript.splitlines()[1:-1]:
+        datetime.fromisoformat(event_line.split(" ", 1)[0])
 
 
 @pytest.mark.parametrize("prompt_values", [["clear", "exit"], ["2", "clear", "exit"]])

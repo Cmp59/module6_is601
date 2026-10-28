@@ -7,6 +7,17 @@ from .input_validators import normalize_command, parse_number
 from .logger import SessionLogger
 from .operations import OperationFactory
 
+
+def _record_issue(calculator_app, session_logger, message, *, error=False):
+    """Record a user-facing issue in the session journal and app log."""
+    if session_logger is not None:
+        recorder = session_logger.record_error if error else session_logger.record_warning
+        recorder(message)
+    if calculator_app is not None:
+        log_method = calculator_app.logger.error if error else calculator_app.logger.warning
+        log_method(message)
+
+
 def _read_input(prompt, session_logger=None):
     """Read one prompt, returning None for EOF or an interrupt."""
     try:
@@ -15,6 +26,8 @@ def _read_input(prompt, session_logger=None):
             session_logger.record_input(prompt.rstrip(": "), value)
         return value
     except (EOFError, KeyboardInterrupt):
+        if session_logger is not None:
+            session_logger.record_warning("Input interrupted by EOF or keyboard interrupt")
         print("Input interrupted. Exiting calculator.")
         return None
 
@@ -111,11 +124,14 @@ def _handle_command(user_input, calculator, session_logger=None):
         try:
             entry_number = int(selection)
         except ValueError:
-            print("Load failed: Choose a listed saved-entry number.")
+            message = "Choose a listed saved-entry number."
+            _record_issue(calculator, session_logger, message)
+            print(f"Load failed: {message}")
             return "handled"
         try:
             calculation = calculator.load_entry(entry_number)
         except (ValueError, CalculatorError) as error:
+            _record_issue(calculator, session_logger, str(error))
             print(f"Load failed: {error}")
         else:
             if session_logger is not None:
@@ -166,10 +182,12 @@ def calculator():
         if command_action == "handled":
             continue
         if operator not in OperationFactory.commands() or not calculator_app.supports(operator):
-            print(
-                "Please choose add, subtract, multiply, divide, power, root, "
-                "modulus, int_divide, percent, or abs_diff."
+            message = (
+                "Unsupported operation command: "
+                f"{operator}. Enter help to see available operations."
             )
+            _record_issue(calculator_app, session_logger, message)
+            print("Please choose a supported word command. Enter help to list operations.")
             continue
 
         second_input = _read_input("Second number: ", session_logger)
@@ -192,6 +210,7 @@ def calculator():
                 operator, first_number, second_number
             )
         except CalculatorError as error:
+            _record_issue(calculator_app, session_logger, str(error))
             print(f"Error: {error}")
             continue
 

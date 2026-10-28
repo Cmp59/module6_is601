@@ -1,5 +1,7 @@
 """Calculation objects and the factory that creates them."""
 
+from datetime import datetime, timezone
+
 from .operations import OperationFactory, OperationStrategy
 
 
@@ -18,6 +20,7 @@ class Calculation:
         self.operator_symbol = operator_symbol
         self.operation = operation
         self.result = None
+        self.timestamp = datetime.now(timezone.utc).isoformat()
 
     def perform(self) -> float:
         """Run the stored operation and return its result."""
