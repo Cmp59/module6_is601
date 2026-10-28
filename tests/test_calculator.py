@@ -58,6 +58,13 @@ def test_calculator_rejects_input_over_configured_maximum(tmp_path):
         calculator.calculate("add", 11, 1)
 
 
+def test_calculator_rejects_nonnumeric_api_input(tmp_path):
+    calculator = make_calculator(tmp_path, auto_save=False)
+
+    with pytest.raises(InvalidInputError, match="Inputs must be numeric"):
+        calculator.calculate("add", "not numeric", 1)
+
+
 def test_calculator_undo_redo_and_empty_stack_results(tmp_path):
     calculator = make_calculator(tmp_path, auto_save=False)
 

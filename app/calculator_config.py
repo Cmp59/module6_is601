@@ -115,8 +115,8 @@ class CalculatorConfig:
                 if log_file_path.is_absolute()
                 else log_dir / log_file_path
             )
-            if not history_dir.name or not log_dir.name or not log_file.name:
-                raise ConfigurationError("History and log directories must be valid paths.")
+            if not log_file.name:
+                raise ConfigurationError("CALCULATOR_LOG_FILE must include a filename.")
             if log_file.exists() and log_file.is_dir():
                 raise ConfigurationError("CALCULATOR_LOG_FILE must be a file path.")
             if log_file.parent.exists() and not log_file.parent.is_dir():

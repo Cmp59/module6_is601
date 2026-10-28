@@ -8,7 +8,8 @@ import pytest
 
 from app.calculator import Calculator
 from app.exceptions import ConfigurationError, HistoryError
-from app.calculator_repl import calculator
+from app.calculator_repl import _handle_command, calculator
+from app.logger import SessionLogger
 
 
 @pytest.mark.parametrize(
@@ -362,3 +363,31 @@ def test_load_selection_can_be_interrupted(capsys, monkeypatch, tmp_path):
     output = capsys.readouterr().out
     assert "Input interrupted. Exiting calculator." in output
     assert "Session history saved to:" in output
+
+
+def test_load_command_works_without_session_logger(capsys, monkeypatch, tmp_path):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    pd.DataFrame(
+        [[2, "add", 3, 5]],
+        columns=["first_operand", "operator", "second_operand", "result"],
+    ).to_csv(tmp_path / "history_previous.csv", index=False)
+    calculator_app = Calculator()
+
+    with patch("builtins.input", return_value="1"):
+        action = _handle_command("load", calculator_app)
+    calculator_app.close()
+
+    assert action == "handled"
+    assert "Loaded calculation into this session" in capsys.readouterr().out
+
+
+def test_calculator_reports_session_log_write_error(monkeypatch, capsys):
+    monkeypatch.setattr(
+        SessionLogger,
+        "close",
+        lambda self: (_ for _ in ()).throw(OSError("log write failed")),
+    )
+    with patch("builtins.input", return_value="exit"):
+        calculator()
+
+    assert "Error saving session log: log write failed" in capsys.readouterr().out

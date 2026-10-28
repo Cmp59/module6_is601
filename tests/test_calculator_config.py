@@ -75,6 +75,22 @@ def test_config_rejects_empty_history_path(monkeypatch):
         CalculatorConfig.load(env_file=Path("missing-test-env"))
 
 
+@pytest.mark.parametrize(
+    "name, message",
+    [
+        ("CALCULATOR_HISTORY_DIR", "CALCULATOR_HISTORY_DIR cannot be empty"),
+        ("CALCULATOR_LOG_DIR", "CALCULATOR_LOG_DIR cannot be empty"),
+        ("CALCULATOR_LOG_FILE", "CALCULATOR_LOG_FILE cannot be empty"),
+        ("CALCULATOR_DEFAULT_ENCODING", "CALCULATOR_DEFAULT_ENCODING cannot be empty"),
+    ],
+)
+def test_config_rejects_empty_settings(monkeypatch, name, message):
+    monkeypatch.setenv(name, " ")
+
+    with pytest.raises(ConfigurationError, match=message):
+        CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+
 def test_config_rejects_invalid_auto_save_value(monkeypatch):
     monkeypatch.setenv("CALCULATOR_AUTO_SAVE", "sometimes")
 
@@ -124,7 +140,10 @@ def test_config_wraps_history_path_os_errors(monkeypatch):
         ("CALCULATOR_MAX_HISTORY_SIZE", "0", "positive integer"),
         ("CALCULATOR_MAX_HISTORY_SIZE", "abc", "positive integer"),
         ("CALCULATOR_PRECISION", "-1", "nonnegative integer"),
+        ("CALCULATOR_PRECISION", "invalid", "nonnegative integer"),
         ("CALCULATOR_MAX_INPUT_VALUE", "inf", "positive finite number"),
+        ("CALCULATOR_MAX_INPUT_VALUE", "invalid", "positive number"),
+        ("CALCULATOR_MAX_INPUT_VALUE", "0", "positive finite number"),
         ("CALCULATOR_DEFAULT_ENCODING", "not-an-encoding", "Unknown"),
     ],
 )
@@ -142,3 +161,77 @@ def test_config_rejects_file_used_as_log_directory(monkeypatch, tmp_path):
 
     with pytest.raises(ConfigurationError, match="CALCULATOR_LOG_DIR must be a directory"):
         CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+
+def test_config_rejects_file_used_as_history_directory(monkeypatch, tmp_path):
+    not_a_directory = tmp_path / "not-a-directory"
+    not_a_directory.write_text("x", encoding="utf-8")
+    monkeypatch.delenv("CALCULATOR_HISTORY_FILE", raising=False)
+    monkeypatch.setenv("CALCULATOR_HISTORY_DIR", str(not_a_directory))
+
+    with pytest.raises(ConfigurationError, match="parent.*must be a directory"):
+        CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+
+def test_config_accepts_root_history_directory(monkeypatch):
+    monkeypatch.delenv("CALCULATOR_HISTORY_FILE", raising=False)
+    monkeypatch.setenv("CALCULATOR_HISTORY_DIR", Path(__file__).anchor)
+
+    config = CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+    assert config.history_dir == Path(Path(__file__).anchor)
+
+
+def test_config_rejects_directory_as_log_filename(monkeypatch, tmp_path):
+    monkeypatch.setenv("CALCULATOR_LOG_FILE", str(tmp_path))
+
+    with pytest.raises(ConfigurationError, match="must be a file path"):
+        CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+
+def test_config_rejects_log_path_without_filename(monkeypatch):
+    monkeypatch.setenv("CALCULATOR_LOG_FILE", Path(__file__).anchor)
+
+    with pytest.raises(ConfigurationError, match="must include a filename"):
+        CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+
+def test_config_rejects_file_as_log_file_parent(monkeypatch, tmp_path):
+    parent_file = tmp_path / "not-a-directory"
+    parent_file.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("CALCULATOR_LOG_FILE", str(parent_file / "calc.log"))
+
+    with pytest.raises(ConfigurationError, match="parent.*must be a directory"):
+        CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+
+@pytest.mark.parametrize(
+    "history_dir_value, history_file_value, expected_path",
+    [
+        (None, "nested/history.csv", "nested/history.csv"),
+        ("records", "nested/history.csv", "records/history.csv"),
+    ],
+)
+def test_config_resolves_history_filename_and_directory(
+    monkeypatch, tmp_path, history_dir_value, history_file_value, expected_path
+):
+    monkeypatch.delenv("CALCULATOR_HISTORY_DIR", raising=False)
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", history_file_value)
+    if history_dir_value is not None:
+        monkeypatch.setenv("CALCULATOR_HISTORY_DIR", history_dir_value)
+    env_file = tmp_path / ".env"
+    env_file.write_text("", encoding="utf-8")
+
+    config = CalculatorConfig.load(env_file)
+
+    expected = Path(__file__).resolve().parents[1] / expected_path
+    assert config.history_file == expected
+
+
+def test_config_resolves_absolute_log_filename(monkeypatch, tmp_path):
+    log_file = tmp_path / "custom" / "calculator.log"
+    monkeypatch.setenv("CALCULATOR_LOG_FILE", str(log_file))
+
+    config = CalculatorConfig.load(env_file=Path("missing-test-env"))
+
+    assert config.log_file == log_file
