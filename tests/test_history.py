@@ -273,6 +273,88 @@ def test_history_loads_empty_archive_when_no_session_files_exist(tmp_path):
     assert history.get_saved_entries() == ()
 
 
+def test_history_deserializes_entire_csv_into_calculations(tmp_path):
+    timestamp = "2026-10-27T23:15:00+00:00"
+    csv_file = tmp_path / "saved.csv"
+    pd.DataFrame(
+        [[2, "add", 3, 5, timestamp], [9, "root", 2, 3, timestamp]],
+        columns=[
+            "first_operand",
+            "operator",
+            "second_operand",
+            "result",
+            "timestamp",
+        ],
+    ).to_csv(csv_file, index=False)
+    history = CalculationHistory(tmp_path / "current.csv", auto_save=False)
+
+    calculations = history.load_calculations(csv_file)
+
+    assert len(calculations) == 2
+    assert [calculation.result for calculation in calculations] == [5, 3]
+    assert [calculation.timestamp for calculation in calculations] == [
+        timestamp,
+        timestamp,
+    ]
+    assert [calculation.perform() for calculation in calculations] == [5, 3]
+
+
+def test_history_deserializes_legacy_csv_with_unknown_timestamps(tmp_path):
+    csv_file = tmp_path / "legacy.csv"
+    pd.DataFrame(
+        [[2, "+", 3, 5]],
+        columns=["first_operand", "operator", "second_operand", "result"],
+    ).to_csv(csv_file, index=False)
+    history = CalculationHistory(tmp_path / "current.csv", auto_save=False)
+
+    calculations = history.load_calculations(csv_file)
+
+    assert len(calculations) == 1
+    assert calculations[0].result == 5
+    assert calculations[0].timestamp == ""
+
+
+def test_history_deserializes_empty_csv_session(tmp_path):
+    csv_file = tmp_path / "empty-session.csv"
+    pd.DataFrame(columns=[
+        "first_operand",
+        "operator",
+        "second_operand",
+        "result",
+        "timestamp",
+    ]).to_csv(csv_file, index=False)
+    history = CalculationHistory(tmp_path / "current.csv", auto_save=False)
+
+    assert history.load_calculations(csv_file) == ()
+
+
+def test_history_wraps_whole_session_load_errors(tmp_path):
+    csv_file = tmp_path / "malformed.csv"
+    pd.DataFrame({"not": ["a calculation"]}).to_csv(csv_file, index=False)
+    history = CalculationHistory(tmp_path / "current.csv", auto_save=False)
+
+    with pytest.raises(HistoryError, match="invalid column layout"):
+        history.load_calculations(csv_file)
+
+
+def test_history_wraps_invalid_numeric_row_when_loading_calculations(tmp_path):
+    csv_file = tmp_path / "malformed.csv"
+    pd.DataFrame(
+        [["not-a-number", "add", 3, 5, ""]],
+        columns=[
+            "first_operand",
+            "operator",
+            "second_operand",
+            "result",
+            "timestamp",
+        ],
+    ).to_csv(csv_file, index=False)
+    history = CalculationHistory(tmp_path / "current.csv", auto_save=False)
+
+    with pytest.raises(HistoryError, match="Could not load calculations"):
+        history.load_calculations(csv_file)
+
+
 def test_history_csv_has_explicit_operand_columns(tmp_path):
     history_file = tmp_path / "history.csv"
     history = CalculationHistory(history_file)

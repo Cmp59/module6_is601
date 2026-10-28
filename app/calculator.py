@@ -92,6 +92,23 @@ class Calculator:
         """Return calculations loaded from previous sessions at startup."""
         return self.history.get_saved_entries()
 
+    def saved_sessions(self):
+        """Return previous session files with their calculation counts."""
+        return self.history.get_saved_sessions()
+
+    def load_session(self, session_file):
+        """Load every calculation in a saved CSV into current history."""
+        calculations = self.history.load_calculations(session_file)
+        for calculation in calculations:
+            self._validate_input(calculation.first_number)
+            self._validate_input(calculation.second_number)
+        if calculations:
+            self._undo_stack.append(self._create_memento())
+            self._redo_stack.clear()
+        for calculation in calculations:
+            self._events.notify(calculation)
+        return calculations
+
     def load_entry(self, entry_number):
         """Copy a selected archived calculation into the current session."""
         entries = self.saved_entries()

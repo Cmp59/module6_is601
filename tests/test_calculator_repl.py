@@ -302,7 +302,9 @@ def test_calculator_reports_configuration_error(monkeypatch, capsys):
     assert "Calculator configuration/history error" in capsys.readouterr().out
 
 
-def test_calculator_reports_save_errors(monkeypatch, capsys):
+def test_calculator_reports_save_errors(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    monkeypatch.setenv("CALCULATOR_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setattr(
         Calculator,
         "save",
@@ -312,18 +314,26 @@ def test_calculator_reports_save_errors(monkeypatch, capsys):
         calculator()
 
     assert "Save failed: save failed" in capsys.readouterr().out
+    assert "ERROR save failed" in (tmp_path / "logs" / "calculator.log").read_text(
+        encoding="utf-8"
+    )
 
 
-def test_calculator_reports_load_errors(monkeypatch, capsys):
+def test_calculator_reports_load_errors(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    monkeypatch.setenv("CALCULATOR_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setattr(
         Calculator,
-        "saved_entries",
+        "saved_sessions",
         lambda self: (_ for _ in ()).throw(ConfigurationError("load failed")),
     )
     with patch("builtins.input", side_effect=["load", "exit"]):
         calculator()
 
     assert "Load failed: load failed" in capsys.readouterr().out
+    assert "ERROR load failed" in (tmp_path / "logs" / "calculator.log").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_calculator_reports_session_save_error(monkeypatch, capsys):
@@ -358,14 +368,18 @@ def test_load_lists_and_imports_selected_previous_session_entry(
         [[7, "^", 2, 49], [9, "root", 2, 3]],
         columns=["first_operand", "operator", "second_operand", "result"],
     ).to_csv(tmp_path / "history_previous.csv", index=False)
-    with patch("builtins.input", side_effect=["load", "2", "history", "exit"]):
+    with patch("builtins.input", side_effect=["load", "1", "history", "exit"]):
         calculator()
 
     output = capsys.readouterr().out
-    assert "[1] 7 ^ 2 = 49" in output
-    assert "[2] 9 root 2 = 3" in output
-    assert "Loaded calculation into this session: 9.0 root 2.0 = 3.0." in output
-    assert "1. 9.0 root 2.0 = 3.0" in output
+    assert "[1] history_previous.csv (2 calculations)" in output
+    assert "Loaded 2 calculation(s) from history_previous.csv into this session." in output
+    assert "1. 7.0 ^ 2.0 = 49.0" in output
+    assert "2. 9.0 root 2.0 = 3.0" in output
+    current_session_csv = next(tmp_path.glob("history_*.csv"))
+    transcript = current_session_csv.with_suffix(".txt").read_text(encoding="utf-8")
+    assert "Calculation: 7.0 ^ 2.0 = 49.0" in transcript
+    assert "Calculation: 9.0 root 2.0 = 3.0" in transcript
 
 
 @pytest.mark.parametrize("selection", ["abc", "0", "8"])
@@ -378,7 +392,7 @@ def test_load_reports_invalid_selection(capsys, monkeypatch, tmp_path, selection
     with patch("builtins.input", side_effect=["load", selection, "exit"]):
         calculator()
 
-    assert "Load failed: Choose a listed saved-entry number." in capsys.readouterr().out
+    assert "Load failed: Choose a listed saved-session number." in capsys.readouterr().out
 
 
 def test_load_can_be_cancelled(capsys, monkeypatch, tmp_path):
@@ -404,8 +418,10 @@ def test_load_can_be_cancelled(capsys, monkeypatch, tmp_path):
     ],
 )
 def test_state_commands_report_errors(
-    command, method_name, expected_message, monkeypatch, capsys
+    command, method_name, expected_message, monkeypatch, capsys, tmp_path
 ):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    monkeypatch.setenv("CALCULATOR_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setattr(
         Calculator,
         method_name,
@@ -415,10 +431,29 @@ def test_state_commands_report_errors(
         calculator()
 
     assert expected_message in capsys.readouterr().out
+    app_log = (tmp_path / "logs" / "calculator.log").read_text(encoding="utf-8")
+    assert "ERROR history unavailable" in app_log
+
+
+def test_clear_undo_redo_errors_are_logged(monkeypatch, tmp_path):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    monkeypatch.setenv("CALCULATOR_LOG_DIR", str(tmp_path / "logs"))
+    for method_name in ("clear", "undo", "redo"):
+        monkeypatch.setattr(
+            Calculator,
+            method_name,
+            lambda self: (_ for _ in ()).throw(HistoryError("state failed")),
+        )
+        with patch("builtins.input", side_effect=[method_name, "exit"]):
+            calculator()
+
+    app_log = (tmp_path / "logs" / "calculator.log").read_text(encoding="utf-8")
+    assert app_log.count("ERROR state failed") == 3
 
 
 def test_load_selection_can_be_interrupted(capsys, monkeypatch, tmp_path):
     monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    monkeypatch.setenv("CALCULATOR_LOG_DIR", str(tmp_path / "logs"))
     pd.DataFrame(
         [[2, "+", 3, 5]],
         columns=["first_operand", "operator", "second_operand", "result"],
@@ -429,6 +464,9 @@ def test_load_selection_can_be_interrupted(capsys, monkeypatch, tmp_path):
     output = capsys.readouterr().out
     assert "Input interrupted. Exiting calculator." in output
     assert "Session history saved to:" in output
+    assert "WARNING Input interrupted by EOF or keyboard interrupt" in (
+        tmp_path / "logs" / "calculator.log"
+    ).read_text(encoding="utf-8")
 
 
 def test_load_command_works_without_session_logger(capsys, monkeypatch, tmp_path):
@@ -444,7 +482,75 @@ def test_load_command_works_without_session_logger(capsys, monkeypatch, tmp_path
     calculator_app.close()
 
     assert action == "handled"
-    assert "Loaded calculation into this session" in capsys.readouterr().out
+    assert "Loaded 1 calculation(s) from history_previous.csv" in capsys.readouterr().out
+
+
+def test_load_whole_session_without_session_logger(capsys, monkeypatch, tmp_path):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    pd.DataFrame(
+        [[2, "add", 3, 5]],
+        columns=["first_operand", "operator", "second_operand", "result"],
+    ).to_csv(tmp_path / "history_previous.csv", index=False)
+    calculator_app = Calculator()
+
+    with patch("builtins.input", return_value="1"):
+        action = _handle_command("load", calculator_app)
+    calculator_app.close()
+
+    assert action == "handled"
+    assert calculator_app.history_entries()[0]["result"] == 5
+    assert "Loaded 1 calculation(s) from history_previous.csv" in capsys.readouterr().out
+
+
+def test_load_whole_session_records_calculations_with_session_logger(
+    capsys, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    pd.DataFrame(
+        [[2, "add", 3, 5], [4, "multiply", 6, 24]],
+        columns=["first_operand", "operator", "second_operand", "result"],
+    ).to_csv(tmp_path / "history_previous.csv", index=False)
+    calculator_app = Calculator()
+    session_logger = SessionLogger(calculator_app.session_history_file)
+
+    with patch("builtins.input", return_value="1"):
+        action = _handle_command("load", calculator_app, session_logger)
+    calculator_app.close()
+    transcript_path = session_logger.close()
+    transcript = transcript_path.read_text(encoding="utf-8")
+
+    assert action == "handled"
+    assert "Calculation: 2.0 add 3.0 = 5.0" in transcript
+    assert "Calculation: 4.0 multiply 6.0 = 24.0" in transcript
+    assert "Loaded 2 calculation(s) from history_previous.csv" in capsys.readouterr().out
+
+
+def test_load_reports_and_logs_session_deserialization_error(
+    monkeypatch, capsys, tmp_path
+):
+    monkeypatch.setenv("CALCULATOR_HISTORY_FILE", str(tmp_path / "history.csv"))
+    monkeypatch.setenv("CALCULATOR_LOG_DIR", str(tmp_path / "logs"))
+    pd.DataFrame(
+        [[2, "add", 3, 5]],
+        columns=["first_operand", "operator", "second_operand", "result"],
+    ).to_csv(tmp_path / "history_previous.csv", index=False)
+    monkeypatch.setattr(
+        Calculator,
+        "load_session",
+        lambda self, path: (_ for _ in ()).throw(HistoryError("CSV could not deserialize")),
+    )
+
+    with patch("builtins.input", side_effect=["load", "1", "exit"]):
+        calculator()
+
+    output = capsys.readouterr().out
+    assert "Load failed: CSV could not deserialize" in output
+    app_log = (tmp_path / "logs" / "calculator.log").read_text(encoding="utf-8")
+    assert "ERROR CSV could not deserialize" in app_log
+    session_file = next(tmp_path.glob("history_*.txt"))
+    assert "ERROR: CSV could not deserialize" in session_file.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_calculator_reports_session_log_write_error(monkeypatch, capsys):

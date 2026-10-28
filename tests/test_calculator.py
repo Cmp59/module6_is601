@@ -162,6 +162,50 @@ def test_calculator_loads_selected_entry_from_previous_session(tmp_path):
     }
 
 
+def test_calculator_loads_all_rows_from_session_and_undoes_as_single_action(tmp_path):
+    session_file = tmp_path / "history_saved.csv"
+    timestamp = "2026-10-27T23:15:00+00:00"
+    pd.DataFrame(
+        [[2, "add", 3, 5, timestamp], [4, "multiply", 6, 24, timestamp]],
+        columns=[
+            "first_operand",
+            "operator",
+            "second_operand",
+            "result",
+            "timestamp",
+        ],
+    ).to_csv(session_file, index=False)
+    calculator = make_calculator(tmp_path, auto_save=False)
+
+    calculations = calculator.load_session(session_file)
+
+    assert len(calculations) == 2
+    assert [entry["result"] for entry in calculator.history_entries()] == [5, 24]
+    assert [entry["timestamp"] for entry in calculator.history_entries()] == [
+        timestamp,
+        timestamp,
+    ]
+    assert calculator.undo() is True
+    assert calculator.history_entries() == ()
+
+
+def test_calculator_empty_session_import_does_not_create_undo_state(tmp_path):
+    session_file = tmp_path / "empty.csv"
+    pd.DataFrame(
+        columns=[
+            "first_operand",
+            "operator",
+            "second_operand",
+            "result",
+            "timestamp",
+        ]
+    ).to_csv(session_file, index=False)
+    calculator = make_calculator(tmp_path, auto_save=False)
+
+    assert calculator.load_session(session_file) == ()
+    assert calculator.undo() is False
+
+
 @pytest.mark.parametrize("entry_number", [0, 2, "1"])
 def test_calculator_rejects_invalid_saved_entry_number(tmp_path, entry_number):
     pd.DataFrame(

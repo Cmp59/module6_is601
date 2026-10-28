@@ -18,7 +18,7 @@ def _record_issue(calculator_app, session_logger, message, *, error=False):
         log_method(message)
 
 
-def _read_input(prompt, session_logger=None):
+def _read_input(prompt, session_logger=None, calculator_app=None):
     """Read one prompt, returning None for EOF or an interrupt."""
     try:
         value = input(prompt).strip()
@@ -26,8 +26,11 @@ def _read_input(prompt, session_logger=None):
             session_logger.record_input(prompt.rstrip(": "), value)
         return value
     except (EOFError, KeyboardInterrupt):
-        if session_logger is not None:
-            session_logger.record_warning("Input interrupted by EOF or keyboard interrupt")
+        _record_issue(
+            calculator_app,
+            session_logger,
+            "Input interrupted by EOF or keyboard interrupt",
+        )
         print("Input interrupted. Exiting calculator.")
         return None
 
@@ -50,6 +53,7 @@ def _handle_command(user_input, calculator, session_logger=None):
         try:
             removed_count = calculator.clear()
         except CalculatorError as error:
+            _record_issue(calculator, session_logger, str(error), error=True)
             print(f"Clear failed: {error}")
         else:
             print(
@@ -62,6 +66,7 @@ def _handle_command(user_input, calculator, session_logger=None):
         try:
             undone = calculator.undo()
         except CalculatorError as error:
+            _record_issue(calculator, session_logger, str(error), error=True)
             print(f"Undo failed: {error}")
         else:
             if undone:
@@ -77,6 +82,7 @@ def _handle_command(user_input, calculator, session_logger=None):
         try:
             redone = calculator.redo()
         except CalculatorError as error:
+            _record_issue(calculator, session_logger, str(error), error=True)
             print(f"Redo failed: {error}")
         else:
             if redone:
@@ -92,29 +98,32 @@ def _handle_command(user_input, calculator, session_logger=None):
         try:
             session_file, entry_count = calculator.save()
         except CalculatorError as error:
+            _record_issue(calculator, session_logger, str(error), error=True)
             print(f"Save failed: {error}")
         else:
             print(f"Saved {entry_count} calculation(s) to {session_file}.")
         return "handled"
     if command == "load":
         try:
-            entries = calculator.saved_entries()
+            sessions = calculator.saved_sessions()
         except CalculatorError as error:
+            _record_issue(calculator, session_logger, str(error), error=True)
             print(f"Load failed: {error}")
             return "handled"
-        if not entries:
+        if not sessions:
             print("Load: no calculations found in previous session CSV files.")
             return "handled"
 
-        print("Saved calculations from previous sessions:")
-        for entry_number, entry in enumerate(entries, start=1):
+        print("Saved calculation sessions:")
+        for session_number, session in enumerate(sessions, start=1):
             print(
-                f"[{entry_number}] {entry['first_operand']} {entry['operator']} "
-                f"{entry['second_operand']} = {entry['result']} "
-                f"({entry['_session_file'].name})"
+                f"[{session_number}] {session['session_file'].name} "
+                f"({session['count']} calculations)"
             )
         selection = _read_input(
-            "Enter an entry number to load, or 'cancel': ", session_logger
+            "Enter a session number to load, or 'cancel': ",
+            session_logger,
+            calculator,
         )
         if selection is None:
             return "exit"
@@ -122,26 +131,36 @@ def _handle_command(user_input, calculator, session_logger=None):
             print("Load cancelled; current history is unchanged.")
             return "handled"
         try:
-            entry_number = int(selection)
+            session_number = int(selection)
         except ValueError:
-            message = "Choose a listed saved-entry number."
+            message = "Choose a listed saved-session number."
+            _record_issue(calculator, session_logger, message)
+            print(f"Load failed: {message}")
+            return "handled"
+        if not 1 <= session_number <= len(sessions):
+            message = "Choose a listed saved-session number."
             _record_issue(calculator, session_logger, message)
             print(f"Load failed: {message}")
             return "handled"
         try:
-            calculation = calculator.load_entry(entry_number)
+            session_file = sessions[session_number - 1]["session_file"]
+            calculations = calculator.load_session(session_file)
         except (ValueError, CalculatorError) as error:
-            _record_issue(calculator, session_logger, str(error))
+            _record_issue(calculator, session_logger, str(error), error=True)
             print(f"Load failed: {error}")
         else:
-            if session_logger is not None:
-                session_logger.record_calculation(
-                    calculation.operator_symbol,
-                    calculation.first_number,
-                    calculation.second_number,
-                    calculation.result,
-                )
-            print(f"Loaded calculation into this session: {calculation}.")
+            for calculation in calculations:
+                if session_logger is not None:
+                    session_logger.record_calculation(
+                        calculation.operator_symbol,
+                        calculation.first_number,
+                        calculation.second_number,
+                        calculation.result,
+                    )
+            print(
+                f"Loaded {len(calculations)} calculation(s) from "
+                f"{session_file.name} into this session."
+            )
         return "handled"
     return None
 
@@ -163,7 +182,7 @@ def calculator():
     print("Commands: help, history, clear, undo, redo, save, load, exit (q also exits).")
 
     while True:
-        first_input = _read_input("First number: ", session_logger)
+        first_input = _read_input("First number: ", session_logger, calculator_app)
         if first_input is None:
             break
         command_action = _handle_command(first_input, calculator_app, session_logger)
@@ -172,7 +191,7 @@ def calculator():
         if command_action == "handled":
             continue
 
-        operator = _read_input("Operation: ", session_logger)
+        operator = _read_input("Operation: ", session_logger, calculator_app)
         if operator is None:
             break
         operator = normalize_command(operator)
@@ -190,7 +209,9 @@ def calculator():
             print("Please choose a supported word command. Enter help to list operations.")
             continue
 
-        second_input = _read_input("Second number: ", session_logger)
+        second_input = _read_input(
+            "Second number: ", session_logger, calculator_app
+        )
         if second_input is None:
             break
         command_action = _handle_command(second_input, calculator_app, session_logger)
@@ -222,12 +243,14 @@ def calculator():
     try:
         session_file = calculator_app.close()
     except CalculatorError as error:
+        _record_issue(calculator_app, session_logger, str(error), error=True)
         print(f"Error saving session history: {error}")
     else:
         print(f"Session history saved to: {session_file.resolve()}")
     try:
         log_file = session_logger.close()
     except OSError as error:
+        calculator_app.logger.error("Could not save session journal: %s", error)
         print(f"Error saving session log: {error}")
     else:
         print(f"Session log saved to: {log_file.resolve()}")

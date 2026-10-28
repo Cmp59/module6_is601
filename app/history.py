@@ -6,7 +6,7 @@ from typing import Tuple
 
 import pandas as pd
 
-from .calculation import Calculation
+from .calculation import Calculation, CalculationFactory
 from .exceptions import HistoryError
 
 HISTORY_COLUMNS = [
@@ -133,6 +133,53 @@ class CalculationHistory(CalculationObserver):
     def get_saved_entries(self) -> Tuple[dict, ...]:
         """Return the archive entries loaded when this calculator started."""
         return tuple(self._saved_data.to_dict(orient="records"))
+
+    def get_saved_sessions(self) -> Tuple[dict, ...]:
+        """Return archived CSV paths and their calculation counts."""
+        sessions = []
+        for session_file in self._saved_data["_session_file"].drop_duplicates():
+            sessions.append(
+                {
+                    "session_file": session_file,
+                    "count": int(
+                        (self._saved_data["_session_file"] == session_file).sum()
+                    ),
+                }
+            )
+        return tuple(sessions)
+
+    def load_calculations(self, history_file: Path) -> Tuple[Calculation, ...]:
+        """Deserialize every row in a CSV into a Calculation instance."""
+        try:
+            loaded = pd.read_csv(history_file, encoding=self.encoding)
+            if list(loaded.columns) == LEGACY_HISTORY_COLUMNS:
+                loaded["timestamp"] = ""
+            elif list(loaded.columns) != HISTORY_COLUMNS:
+                raise HistoryError("History CSV has an invalid column layout.")
+            calculations = []
+            for row in loaded[HISTORY_COLUMNS].to_dict(orient="records"):
+                calculation = CalculationFactory.create(
+                    row["operator"],
+                    float(row["first_operand"]),
+                    float(row["second_operand"]),
+                )
+                calculation.result = float(row["result"])
+                timestamp = row["timestamp"]
+                calculation.timestamp = "" if pd.isna(timestamp) else str(timestamp)
+                calculations.append(calculation)
+        except HistoryError:
+            raise
+        except (
+            OSError,
+            UnicodeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            pd.errors.EmptyDataError,
+            pd.errors.ParserError,
+        ) as error:
+            raise HistoryError(f"Could not load calculations: {error}") from error
+        return tuple(calculations)
 
     def format_entries(self) -> str:
         """Format history entries for display in the REPL."""
